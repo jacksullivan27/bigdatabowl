@@ -1,0 +1,140 @@
+---
+title: "Offensive Presnap Motion's Impact on Defensive Coverage"
+author: "Jack Sullivan and Shekhar Shah"
+date: "2024-11-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r, include=FALSE}
+library(dplyr)
+library(readr)
+library(rvest)
+library(stringr)
+library(ggplot2)
+library(kableExtra)
+```
+
+# Introduction
+
+```{r, include=FALSE}
+# read the data
+plays = read_csv("data/plays.csv")
+player_play = read_csv("data/player_play.csv")
+games = read_csv("data/games.csv")
+players = read_csv("data/players.csv")
+```
+
+```{r}
+players_in_motion <- player_play %>% # creating a dataframe of any plays that had motion
+  left_join(players, by = "nflId") %>% # get player names and positions for filters
+  mutate(anyMotion = ifelse((motionSinceLineset == T | inMotionAtBallSnap == T), T, F)) %>% # create variable for any type of presnap motion
+  filter(anyMotion == T) %>%  # filter for only players that had motion in a play
+  filter(position %in% c("QB", "WR", "RB", "TE", "FB", "T")) %>% # filter to offense
+  select(gameId, playId, nflId, teamAbbr, anyMotion) # select needed variables
+
+
+plays_with_motion <- plays %>% # joining the plays with motion with all plays, plays without motion will have NA in the motion column
+  left_join(players_in_motion %>% 
+              distinct(gameId, playId) %>%
+              mutate(motion = TRUE),
+            by = c("gameId", "playId")) %>%
+  mutate(motion = ifelse(is.na(motion), FALSE, TRUE))
+
+pct_plays_with_motion <- mean(plays_with_motion$motion)
+pct_plays_with_motion
+```
+
+```{r}
+team_motion <- plays_with_motion %>% # dataframe of how much each team used motion
+  group_by(possessionTeam) %>% 
+  summarise(
+    motion_percent = mean(motion)
+  ) %>% 
+  mutate(possessionTeam = case_when(
+    possessionTeam == "LA" ~ "LAR",
+    possessionTeam == "WAS" ~ "WSH",   # Example of another abbreviation change
+    TRUE ~ possessionTeam  # Keep the original value if no match
+  ))
+
+
+team_motion %>%
+  mutate(motion_percent = round(motion_percent * 100, 2)) %>%  # Convert to percentage and round
+  kable(
+    col.names = c("Team", "Motion %"),
+    digits = 2,
+    align = c('l', 'r')
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    position = "center"
+  )
+```
+
+```{r, include=FALSE}
+# this cell grabs the team winning % from ESPN
+url <- "https://www.espn.com/nfl/standings/_/season/2023"
+webpage <- read_html(url)
+
+# Extract all tables from the webpage
+tables <- html_table(webpage, fill = TRUE, header = TRUE)
+
+# View the tables
+afc_teams <- tables[[1]]
+afc_win_per <- tables[[2]]["PCT"]
+nfc_teams <- tables[[3]]
+nfc_win_per <- tables[[4]]["PCT"]
+
+afc_combined <- afc_teams %>%
+  mutate(win_per = afc_win_per$PCT) %>% 
+  rename(team = `AFC East`)
+
+# Combine NFC teams and win percentages
+nfc_combined <- nfc_teams %>%
+  mutate(win_per = nfc_win_per$PCT) %>% 
+  rename(team = `NFC East`)
+
+# Bind AFC and NFC data together
+teams <- bind_rows(afc_combined, nfc_combined)
+
+# Extract team abbreviations and create a data frame with win percentages
+team_win_pct <- teams %>%
+  mutate(abbr = str_extract(teams[[1]], "\\b[A-Z]{2,3}(?=[A-Z][a-z])")) %>%
+  filter(!is.na(abbr)) %>%
+  select(abbr, PCT = win_per)
+team_win_pct
+
+```
+
+```{r, include=FALSE}
+# this cell joins dataframes to examine motion percentage and winning
+motion_and_winning <- team_win_pct %>%
+  left_join(team_motion, by = c("abbr" = "possessionTeam"))
+
+model = lm(PCT ~ 1 + motion_percent, data = motion_and_winning)
+summary(model)
+
+ggplot(motion_and_winning, aes(x = motion_percent, y = PCT)) + 
+  geom_point(color = "blue") +  # Scatter plot points
+  xlab("Percent of Motion in Offense") +
+  ylab("Winning Percentage") +
+  ggtitle("Winning Percentage vs. Offensive Motion") +
+  theme_minimal()
+```
+
+
+```{r}
+motion_and_winning %>% 
+  arrange(desc(motion_percent)) %>% 
+  head(6)
+
+motion_and_winning %>% 
+  arrange(desc(PCT)) %>% 
+  head(6)
+```
+
