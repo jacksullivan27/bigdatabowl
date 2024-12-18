@@ -1,7 +1,8 @@
-setwd("C:/Users/jsull/Python Projects/big-data-bowl-2025")
+setwd("C:/Users/jsull/Python Projects/big-data-bowl-2025/bigdatabowl")
 
 # import libraries
 library(dplyr)
+library(tidyr)
 library(readr)
 library(rvest)
 library(stringr)
@@ -47,32 +48,13 @@ filtered_data <- test_join %>%
   filter(frameId >= line_set_frame) %>% 
   filter(frameType == "BEFORE_SNAP" | frameType == "SNAP")
 
+#===========================================================================================================================================
+#===========================================================================================================================================
 
 # GENERALIZE TO GET MOTION PLAYER TRACKING FOR EVERY WEEK
 
 all_filtered_data <- vector("list", 9)  # Initialize an empty list
 
-# for (i in 1:9) {
-#   file_path <- paste0("data/tracking_week_", i, ".csv")  # Construct the file path
-#   tracking <- read_csv(file_path)                        # Read the CSV file
-#   
-#   first_join <- motion_players %>% 
-#     left_join(tracking, by = c("gameId", "playId", "nflId"))  # Join with motion_players
-#   
-#   lineset_frames <- first_join %>%
-#     filter(event == "line_set") %>%
-#     group_by(gameId, playId, nflId) %>%
-#     summarize(line_set_frame = min(frameId), .groups = "drop")
-#   
-#   # Filter to get records starting at "line_set"
-#   filtered_data <- first_join %>%
-#     left_join(lineset_frames, by = c("gameId", "playId", "nflId")) %>%
-#     filter(frameId >= line_set_frame) %>%
-#     filter(frameType %in% c("BEFORE_SNAP", "SNAP"))
-#   
-#   # Store filtered data for each week
-#   all_filtered_data[[i]] <- filtered_data
-# }
 
 library(foreach)
 library(doParallel)
@@ -106,4 +88,34 @@ all_filtered_data <- foreach(i = 1:9, .packages = c("dplyr", "readr")) %dopar% {
   
 # Combine all weeks into a single dataframe
 motion_players_tracking <- bind_rows(all_filtered_data)
+
+
+motion_plays <- motion_players %>% 
+  select(gameId, playId) %>% 
+  distinct()
+
+
+combined_data <- motion_plays %>% 
+  left_join(week1, by = c("gameId", "playId")) %>% 
+  left_join(players_info, by = c("nflId")) %>% 
+  filter(frameType == "SNAP") %>% 
+  filter(position =="QB" | displayName.x == "football") %>% 
+  mutate(position = replace_na(position, "ball")) %>% 
+  mutate(
+    x = as.double(x),
+    y = as.double(y),
+    s = as.double(s),
+    a = as.double(a),
+    dir = as.double(dir),
+    dis = as.double(dis),
+    o = as.double(o)
+  ) %>%
+  select(gameId, playId, position, x, y, s, a, dir, dis, o) %>%
+  group_by(gameId, playId) %>%
+  pivot_wider(
+    names_from = position,
+    values_from = c(x, y, s, a, dir, dis, o),
+    names_glue = "{position}_{.value}"
+  )
+  
 
