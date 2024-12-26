@@ -7,6 +7,7 @@ library(readr)
 library(rvest)
 library(stringr)
 library(ggplot2)
+library(purrr)
 
 # read the raw data
 plays <-  read_csv("data/plays.csv")
@@ -94,28 +95,43 @@ motion_plays <- motion_players %>%
   select(gameId, playId) %>% 
   distinct()
 
+qb_ball_data_all <- list()
 
-combined_data <- motion_plays %>% 
-  left_join(week1, by = c("gameId", "playId")) %>% 
-  left_join(players_info, by = c("nflId")) %>% 
-  filter(frameType == "SNAP") %>% 
-  filter(position =="QB" | displayName.x == "football") %>% 
-  mutate(position = replace_na(position, "ball")) %>% 
-  mutate(
-    x = as.double(x),
-    y = as.double(y),
-    s = as.double(s),
-    a = as.double(a),
-    dir = as.double(dir),
-    dis = as.double(dis),
-    o = as.double(o)
-  ) %>%
-  select(gameId, playId, position, x, y, s, a, dir, dis, o) %>%
-  group_by(gameId, playId) %>%
-  pivot_wider(
-    names_from = position,
-    values_from = c(x, y, s, a, dir, dis, o),
-    names_glue = "{position}_{.value}"
-  )
-  
+for (week in 1:9){
+  file <- paste0("data/tracking_week_", week, ".csv")
+  week_data <- read_csv(file)
+  qb_ball_data <- motion_plays %>%
+    left_join(week_data, by = c("gameId", "playId")) %>%
+    left_join(players_info, by = c("nflId")) %>%
+    filter(frameType == "SNAP") %>%
+    filter(position =="QB" | displayName.x == "football") %>%
+    mutate(position = replace_na(position, "ball")) %>%
+    mutate(
+      x = as.double(x),
+      y = as.double(y),
+      s = as.double(s),
+      a = as.double(a),
+      dir = as.double(dir),
+      dis = as.double(dis),
+      o = as.double(o)
+    ) %>%
+    select(gameId, playId, position, x, y, s, a, dir, dis, o) %>%
+    group_by(gameId, playId) %>%
+    pivot_wider(
+      names_from = position,
+      values_from = c(x, y, s, a, dir, dis, o),
+      names_glue = "{position}_{.value}"
+    ) %>%
+    select(gameId, playId, QB_x, QB_y, ball_x, ball_y) %>% 
+    filter(sapply(QB_x, length) == 1) 
+
+
+  qb_ball_data_all[[week]] <- qb_ball_data
+}
+
+
+
+# Combine all weeks into a single data frame
+qb_ball_data_combined <- bind_rows(qb_ball_data_all)
+
 
