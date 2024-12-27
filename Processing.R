@@ -95,43 +95,56 @@ motion_plays <- motion_players %>%
   select(gameId, playId) %>% 
   distinct()
 
-qb_ball_data_all <- list()
 
-for (week in 1:9){
-  file <- paste0("data/tracking_week_", week, ".csv")
-  week_data <- read_csv(file)
-  qb_ball_data <- motion_plays %>%
-    left_join(week_data, by = c("gameId", "playId")) %>%
-    left_join(players_info, by = c("nflId")) %>%
-    filter(frameType == "SNAP") %>%
-    filter(position =="QB" | displayName.x == "football") %>%
-    mutate(position = replace_na(position, "ball")) %>%
-    mutate(
-      x = as.double(x),
-      y = as.double(y),
-      s = as.double(s),
-      a = as.double(a),
-      dir = as.double(dir),
-      dis = as.double(dis),
-      o = as.double(o)
-    ) %>%
-    select(gameId, playId, position, x, y, s, a, dir, dis, o) %>%
-    group_by(gameId, playId) %>%
-    pivot_wider(
-      names_from = position,
-      values_from = c(x, y, s, a, dir, dis, o),
-      names_glue = "{position}_{.value}"
-    ) %>%
-    select(gameId, playId, QB_x, QB_y, ball_x, ball_y) %>% 
-    filter(sapply(QB_x, length) == 1) 
+# qb_function <- function(filename) {
+#   week_data <- read_csv(filename)
+#   
+#   qb_ball_data <- motion_plays %>%
+#     left_join(week_data, by = c("gameId", "playId")) %>%
+#     left_join(players_info, by = "nflId") %>%
+#     filter(frameType == "SNAP", position == "QB" | displayName.x == "football") %>%
+#     mutate(position = replace_na(position, "ball")) %>%
+#     select(gameId, playId, position, x, y) %>%
+#     group_by(gameId, playId) %>%
+#     pivot_wider(
+#       names_from = position,
+#       values_from = c(x, y),
+#       names_glue = "{position}_{.value}"
+#     ) %>%
+#     filter(!is.list(QB_x)) %>%
+#     ungroup()
+#   
+#   
+#   return(qb_ball_data)
+# }
+# 
+# 
+# 
+# qb_ball_data_combined <- data.frame(
+#   gameId = numeric(),
+#   playId = numeric(), 
+#   QB_x = numeric(),
+#   QB_y = numeric(),
+#   ball_x = numeric(),
+#   ball_y = numeric()
+# )
+# 
+# for (week in 1:9){
+#   file = paste("data/tracking_week_", week, ".csv", sep = "")
+#   qb_function(file)
+#   qb_ball_data_combined <- bind_rows(qb_ball_data_combined, data.frame(
+#     gameId = qb_ball_data$gameId,
+#     playId = qb_ball_data$playId,
+#     QB_x = qb_ball_data$QB_x,
+#     QB_y = qb_ball_data$QB_y,
+#     ball_x = unlist(qb_ball_data$ball_x),
+#     ball_y = unlist(qb_ball_data$ball_y)
+#   ) )
+# }
 
+# write_csv(qb_ball_data_combined, "qb_ball_coords_motion_plays.csv")
 
-  qb_ball_data_all[[week]] <- qb_ball_data
-}
+qb_ball_data <- read_csv("qb_ball_coords_motion_plays.csv")
 
-
-
-# Combine all weeks into a single data frame
-qb_ball_data_combined <- bind_rows(qb_ball_data_all)
-
-
+all_tracking_motion <- qb_ball_data %>% 
+  left_join(motion_players_tracking, by=c("gameId", "playId"), relationship = "many-to-many")
