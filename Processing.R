@@ -98,11 +98,11 @@ motion_plays <- motion_players %>%
 
 # qb_function <- function(filename) {
 #   week_data <- read_csv(filename)
-#   
+# 
 #   qb_ball_data <- motion_plays %>%
 #     left_join(week_data, by = c("gameId", "playId")) %>%
-#     left_join(players_info, by = "nflId") %>%
-#     filter(frameType == "SNAP", position == "QB" | displayName.x == "football") %>%
+#     left_join(players_info %>% select(nflId, position), by = "nflId") %>%
+#     filter(frameType == "SNAP", position == "QB" | displayName == "football") %>%
 #     mutate(position = replace_na(position, "ball")) %>%
 #     select(gameId, playId, position, x, y) %>%
 #     group_by(gameId, playId) %>%
@@ -111,40 +111,66 @@ motion_plays <- motion_players %>%
 #       values_from = c(x, y),
 #       names_glue = "{position}_{.value}"
 #     ) %>%
-#     filter(!is.list(QB_x)) %>%
-#     ungroup()
-#   
-#   
+#     filter(sapply(QB_x, length) == 1) %>%
+#     ungroup() %>% 
+#     select(gameId, playId, QB_x, QB_y, ball_x, ball_y)
+# 
+# 
 #   return(qb_ball_data)
 # }
 # 
 # 
-# 
 # qb_ball_data_combined <- data.frame(
 #   gameId = numeric(),
-#   playId = numeric(), 
+#   playId = numeric(),
 #   QB_x = numeric(),
 #   QB_y = numeric(),
 #   ball_x = numeric(),
 #   ball_y = numeric()
 # )
 # 
+# 
 # for (week in 1:9){
 #   file = paste("data/tracking_week_", week, ".csv", sep = "")
-#   qb_function(file)
+#   qb_ball_data <- qb_function(file)
 #   qb_ball_data_combined <- bind_rows(qb_ball_data_combined, data.frame(
-#     gameId = qb_ball_data$gameId,
-#     playId = qb_ball_data$playId,
-#     QB_x = qb_ball_data$QB_x,
-#     QB_y = qb_ball_data$QB_y,
-#     ball_x = unlist(qb_ball_data$ball_x),
-#     ball_y = unlist(qb_ball_data$ball_y)
-#   ) )
+#       gameId = qb_ball_data$gameId,
+#       playId = qb_ball_data$playId,
+#       QB_x = unlist(qb_ball_data$QB_x),
+#       QB_y = unlist(qb_ball_data$QB_y),
+#       ball_x = unlist(qb_ball_data$ball_x),
+#       ball_y = unlist(qb_ball_data$ball_y)
+#       ))
 # }
 
-# write_csv(qb_ball_data_combined, "qb_ball_coords_motion_plays.csv")
+write_csv(qb_ball_data_combined, "qb_ball_coords_motion_plays.csv")
 
-qb_ball_data <- read_csv("qb_ball_coords_motion_plays.csv")
+qb_ball_data <- read_csv("qb_ball_coords_motion_plays.csv") %>% distinct()
 
-all_tracking_motion <- qb_ball_data %>% 
-  left_join(motion_players_tracking, by=c("gameId", "playId"), relationship = "many-to-many")
+all_tracking_motion <- motion_players_tracking  %>% 
+  left_join(qb_ball_data, by=c("gameId", "playId"), relationship = "many-to-many") %>% 
+  left_join(players_info %>% select("nflId", "position"), by="nflId") %>%
+  distinct()
+
+#=====================================================================================================
+#=====================================================================================================
+# Classifying motion
+
+test <- all_tracking_motion %>% 
+  filter(gameId == 2022090800 & playId == 56)
+
+# Create the field
+nfl_field <- geom_football("nfl", x_trans = 60, y_trans = 26.6667)
+
+
+plot_motion <- function(df){
+  nfl_field +
+    geom_point(data = df, aes(x = x, y = y), color = "blue", size = 3) + # Motion man
+    geom_point(data = df, aes(x = QB_x, y = QB_y), color = "red", size = 3) + # QB
+    geom_point(data = df, aes(x = ball_x, y = ball_y), color = "#624a2e", size = 3) + # Ball
+    labs(x = "X Coordinate", y = "Y Coordinate") +
+    theme(legend.position = "bottom") +
+    annotate("text", x = 10, y = 5, label = "Legend: Blue = Motion Man, Red = QB, Brown = Ball")
+}
+
+plot_motion(test)
