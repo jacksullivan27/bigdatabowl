@@ -1,0 +1,172 @@
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(xgboost)
+library(foreach)
+library(doParallel)
+library(purrr)
+library(data.table)
+install.packages("sf")
+games <- read.csv("games.csv")
+week1 <- read.csv("nfl-big-data-bowl-2025/tracking_week_1.csv")
+week2 <- read.csv("nfl-big-data-bowl-2025/tracking_week_2.csv")
+week3 <- read.csv("nfl-big-data-bowl-2025/tracking_week_3.csv")
+week4 <- read.csv("nfl-big-data-bowl-2025/tracking_week_4.csv")
+week5 <- read.csv("nfl-big-data-bowl-2025/tracking_week_5.csv")
+week6 <- read.csv("nfl-big-data-bowl-2025/tracking_week_6.csv")
+week7 <- read.csv("nfl-big-data-bowl-2025/tracking_week_7.csv")
+week8 <- read.csv("nfl-big-data-bowl-2025/tracking_week_8.csv")
+week9 <- read.csv("nfl-big-data-bowl-2025/tracking_week_9.csv")
+
+tracking <- rbind(tracking_week_1, tracking_week_2)
+tracking <- rbind(tracking, tracking_week_3)
+tracking <- rbind(tracking, week3)
+tracking <- rbind(tracking, week4)
+tracking <- rbind(tracking, week5)
+tracking <- rbind(tracking, week6)
+tracking <- rbind(tracking, week7)
+tracking <- rbind(tracking, week8)
+
+tracking_files <- list(week1, week2, week3, week4, week5, week6, week7, week8, week9)
+
+# Use bind_rows to combine them in one step
+tracking <- bind_rows(tracking_files)
+
+
+
+# Helper function to get nth closest player
+get_nth_closest <- function(data, distance_col, n = 1) {
+  data %>%
+    arrange(.data[[distance_col]]) %>%
+    filter(row_number() == n)
+}
+
+# Process defenders for a single play
+process_defenders <- function(data, gameId, playId) {
+  if (nrow(data) == 0) {
+    return(NULL)
+  }
+  
+  # Get initial closest players
+  home_sideline <- get_nth_closest(data, "distance_to_home_sideline", 1)
+  visitor_sideline <- get_nth_closest(data, "distance_to_visitor_sideline", 1)
+  endzone1 <- get_nth_closest(data, "distance_to_endzone", 1)
+  endzone2 <- get_nth_closest(data, "distance_to_endzone", 2)
+  
+  # Check for duplicates and replace if necessary
+  used_ids <- home_sideline$nflId
+  
+  if (visitor_sideline$nflId %in% used_ids) {
+    temp_visitor <- data %>% filter(!nflId %in% used_ids)
+    if (nrow(temp_visitor) > 0) {
+      visitor_sideline <- get_nth_closest(temp_visitor, "distance_to_visitor_sideline", 1)
+    }
+  }
+  used_ids <- c(used_ids, visitor_sideline$nflId)
+  
+  if (endzone1$nflId %in% used_ids) {
+    temp_endzone1 <- data %>% filter(!nflId %in% used_ids)
+    if (nrow(temp_endzone1) > 0) {
+      endzone1 <- get_nth_closest(temp_endzone1, "distance_to_endzone", 1)
+    }
+  }
+  used_ids <- c(used_ids, endzone1$nflId)
+  
+  if (endzone2$nflId %in% used_ids) {
+    temp_endzone2 <- data %>% filter(!nflId %in% used_ids)
+    if (nrow(temp_endzone2) > 0) {
+      endzone2 <- get_nth_closest(temp_endzone2, "distance_to_endzone", 1)
+    }
+  }
+  
+  # Combine results
+  bind_rows(
+    home_sideline %>% mutate(type = "home_sideline"),
+    visitor_sideline %>% mutate(type = "visitor_sideline"),
+    endzone1 %>% mutate(type = "endzone1"),
+    endzone2 %>% mutate(type = "endzone2")
+  )
+}
+process_week <- function(week_number, players_data) {
+  # Load weekly data
+  week_file <- sprintf("nfl-big-data-bowl-2025/tracking_week_%d.csv", week_number)
+  tracking_week <- read_csv(week_file, show_col_types = FALSE)
+  
+  tracking_week <- tracking_week %>%
+  group_by(gameId, playId) %>%
+  filter(any(event == "line_set") & any(event == "ball_snap")) %>%
+  ungroup()
+  
+  # Get line set defenders
+  line_set_defenders <- tracking_week %>%
+    filter(event == "line_set") %>%
+    left_join(players_data, by = "nflId") %>%
+    filter(position %in% c("CB", "SS", "FS", "ILB", "MLB", "OLB", "DT", "DE"))
+  
+  # Calculate distances
+  all_distances <- line_set_defenders %>%
+    mutate(
+      distance_to_home_sideline = abs(y - 0),
+      distance_to_visitor_sideline = abs(y - 53.3),
+      target_endzone_x = if_else(playDirection == "right", 120, 0),
+      distance_to_endzone = abs(x - target_endzone_x)
+    )
+  
+  # Process defenders for each play
+  week_results <- all_distances %>%
+    group_by(gameId, playId) %>%
+    group_modify(~process_defenders(.x, .x$gameId[1], .x$playId[1])) %>%
+    ungroup()
+  
+  filtered_tracking <- tracking_week %>%
+    right_join(all_perimeter_defenders, by = c("gameId", "playId", "nflId"))
+  
+  # Perform subsequent operations (e.g., filtering frames between line_set and ball_snap)
+  settosnap <- filtered_tracking %>%
+    group_by(gameId, playId) %>%
+    summarise(
+      start_frame = min(frameId.x[event.x == "line_set"], na.rm = TRUE),
+      end_frame = max(frameId.x[event.x == "ball_snap"], na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    inner_join(filtered_tracking, by = c("gameId", "playId")) %>%
+    filter(frameId.x >= start_frame & frameId.x <= end_frame) %>%
+    ungroup()
+  
+  # Return the processed data for the week
+  return(settosnap)
+
+}
+
+
+num_cores <- parallel::detectCores() - 1
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+  
+# Load players data
+players_data <- read_csv("nfl-big-data-bowl-2025/players.csv")
+
+# Process all weeks in parallel
+all_perimeter_defenders <- foreach(
+  week = 1:9,
+  .packages = c("dplyr", "readr"),
+  .export = c("process_defenders", "get_nth_closest"),
+  .combine = bind_rows
+) %dopar% {
+  process_week(week, players_data)
+}
+
+# Stop parallel backend
+stopCluster(cl)
+
+
+wide_tracking <- all_perimeter_defenders %>%
+    select(gameId, playId, frameId.x, type, x.x, y.x) %>%
+    # Pivot the coordinates wider, creating separate columns for each player type
+    pivot_wider(
+      names_from = type,
+      values_from = c(x.x, y.x),
+      names_glue = "{type}_{.value}"  # This will create columns like "home_sideline_x"
+    )
+  
