@@ -1,0 +1,50 @@
+---
+title: "Cat and Mouse. Understanding Defensive Reaction to Offensive Motion"
+author: "Jack Sullivan"
+date: "2025-01-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+*"[Offensive] motion is about gaining leverage on the defense. It gives the quarterback an understanding of what coverage he's facing.* - Barry Alvarez
+
+```{r, echo = FALSE}
+# plays %>% filter(possessionTeam == "BAL" & defensiveTeam == "MIA" & preSnapHomeScore == 7 & preSnapVisitorScore == 7)
+
+# all_tracking_motion %>% filter(gameId == 2022091800 & playId == 1108)
+
+source("animation.r")
+
+animate_presnap(2, 2022091800, 1108, "purple", "aquamarine")
+```
+
+(describe play, potentially improve visualization with center of mass visualization. Connect the play to the insights we can gather using the model.)
+
+
+## Defensive Positioning Metrics
+
+(Describe the metrics we use to measure defensive movement as a result of offensive motion. Utilize graphs and images to convey the idea of perimeter/center of mass/area)
+
+
+
+
+
+
+## Most impactful Motion schemes
+
+(Describe the motion types, formations for motion, ect. that are most impactful to defensive shifting)
+
+
+
+
+## Coach's Application
+
+(describe how our findings can be applied to game planning, play creation, in-game adjustments)
+
+
+##
