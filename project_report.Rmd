@@ -1,12 +1,12 @@
 ---
-title: "Cat and Mouse. Understanding Defensive Reaction to Offensive Motion"
-date: "Big Data Bowl 2025"
+title: "Cat and Mouse: Understanding Defensive Reaction to Offensive Motion"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 source("animation.r")
+library(dplyr)
 ```
 
 
@@ -15,20 +15,12 @@ source("animation.r")
 
 ## Introduction
 
-Presnap motion has changed the landscape of NFL offensive structure’s and scheme in the past few years. Offenses that are able to successfully utilize nuanced pre-snap motion have created a new standard for NFL offenses, and, consequently, a tougher task for opposing defenses to gameplan for. By using pre-snap motion, offenses aim to create leverage and gain insights about the defense’s plan for their play, via the defense’s response to pre-snap motion. By not showing their hand before the snap, the defense can maintain their leverage on the play and the offense is left with a lot less to reap from their pre-snap motion. Our submission aims to quantify the leverage created by the offense on various motion types, and take a closer look at how teams maintain or lose their leverage.
+Pre-snap motion has changed the landscape of NFL offensive structure’s and scheme in the past few years. Offenses that are able to successfully utilize nuanced pre-snap motion have created a new standard for NFL offenses, and, consequently, a tougher task for opposing defenses to gameplan for. By using pre-snap motion, offenses aim to create leverage and gain insights about the defense’s plan for their play, via the defense’s response to pre-snap motion. By not showing their hand before the snap, the defense can maintain their leverage on the play and the offense is left with a lot less to reap from their pre-snap motion. Our submission aims to quantify the leverage created by the offense on various motion types, and take a closer look at how teams maintain or lose their leverage.
 
 ## Methodology
 
 To quantify leverage in the defense, we wanted to find a value that summarizes the defenses reaction to motion on motion plays. We initially considered measuring the perimeter of the defense - tracking the four outermost defensive players on a play - from the line_set event to the ball_snap event, but found that tracking these players didn’t provide enough insight into the defense’s reaction to different motion. 
 
-
-```{r, echo = FALSE, warning=FALSE, message=FALSE}
-# plays %>% filter(possessionTeam == "BAL" & defensiveTeam == "MIA" & preSnapHomeScore == 7 & preSnapVisitorScore == 7)
-
-# all_tracking_motion %>% filter(gameId == 2022091800 & playId == 1108)
-
-animate_presnap(2, 2022091800, 1108, "purple", "aquamarine")
-```
 
 Seeking a summary of the defense’s reaction to motion, we found that there was signal in tracking the centroid of the non-defensive lineman from the start of the motion to the snap.
 
@@ -37,27 +29,46 @@ $$
 centroid_{x, y} = (\frac{\sum^n_{i=1}{x_i}}{n}, \frac{\sum^n_{i=1}{y_i}}{n})
 $$
 
-Where i represents an individual player, and n is the number of non-lineman defenders on the field. Note that lineman are excluded from the centroid calculation because of their general lack of movement presnap.
+Where i represents an individual player, and n is the number of non-lineman defenders on the field. Note that lineman are excluded from the centroid calculation because of their general lack of movement pre-snap.
 
-We utilized parallel computing to efficiently process the mean x and y coordinates of non-defensive lineman from lineset to the snap for all motion plays. Using these values, we were able to calculate the centroid change, which is simply the centroid at the ball_snap event subtracted by the centroid at the man_in_motion event. 
+We utilized parallel computing to efficiently process the mean x and y coordinates of non-defensive lineman from line-set to the snap for all passing motion plays. Using these values, we were able to calculate the **centroid change**, which is simply the centroid at the ball_snap event subtracted by the centroid at the man_in_motion event. 
 
-After settling on the Centroid Change as our target metric, we then used conditional logic to classify five different types of motion (Fly, Jet, Orbit, In, and Out). While teams use various combinations of motions on plays, we found that these five categories generalized the broad families of offensive pre-snap motion. Without PFF annotations for presnap motion type (in the fashion they annotate defensive coverages), it seemed logical to create a general motion classifier built on directional indicators.
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+animate_presnap(2, 2022091800, 1108, "purple", "aquamarine") + labs(
+    title = "Week 2 Dolphins vs Ravens Jet Motion Play"
+  )
+```
 
-We classify Fly motion as motions where a player goes across the formation and crosses the center (ball) coordinates before the ball is snapped, and Jet motion as the same except the player crosses the center (ball) coordinates after the ball is snapped. Orbit motion is defined as non under center plays where the motion man goes behind the QB at any point in his motion. "In" motion was defined as a player going towards the offensive line but not crossing it, and "Out" was defined as a player moving away from the offensive line.
+
+After settling on the centroid change as our target metric, we then used conditional logic to classify five different types of motion (Fly, Jet, Orbit, In, and Out). While teams use various combinations of motions on plays, we found that these five categories generalized the broad families of offensive pre-snap motion. Without PFF annotations for pre-snap motion type (in the fashion they annotate defensive coverages), it seemed logical to create a general motion classifier built on directional indicators.
+
+We classify fly motion as motions where a player goes across the formation and crosses the center (ball) coordinates after the ball is snapped, and jet motion as the same except the player crosses the center (ball) coordinates before the ball is snapped. Orbit motion is defined as non under center plays where the motion man goes behind the QB at any point in his motion. "In" motion was defined as a player going towards the offensive line but not crossing it, and "Out" was defined as a player moving away from the offensive line.
+
+![](../images/MotionUsageRate.png)
 
 In the future we would hope to use PFF annotations of motion types to add greater granularity to our analysis, avoiding bucketing multiple types of motion into a family.
 
+```{r, include=FALSE, message=FALSE}
+plays <- read_csv("data/plays.csv")
+plays %>% filter(gameId==2022091113, playId == 3601) %>% select(expectedPointsAdded)
+```
 
-INSERT SECOND ANIMATION
 
-The play above shows a clearly (positive or negative) movement in the centroid against an ___ motion, indicating the defense showing their hand and giving up  __ leverage through their alignment shift on the play, resulting in a __ (___ EPA) . In the first animation, we see the defense minimizing their centroid change, leading to a minimal gain by the offense ( ___ EPA). However, not all plays are created equal, as shown above. Different types of motion in different situations lead to various outcomes (different types of motion, down, distance, alignments etc.) , and thus it is important that we set a baseline expectation of how much the centroid should change on a certain play. 
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+animate_presnap(1, 2022091113, 3601, "blue", "maroon")+ labs(
+    title = "Week 1 Bucs vs Cowboys No Motion Play"
+  )
+```
 
-INSERT GRAPH SHOWING DIFFERENT MOTIONS CREATING DIFFERENT CENTRIOD CHANGES
+
+The Ravens vs Dolphins example shows a clear movement in the defensive centroid against a jet motion. This indicates the offense forcing the defense to show their hand and give up  1.384 yards of centroid change through their alignment shift on the play; resulting in a 75 yard touchdown (5.429 EPA). In the second animation, we see the defense minimizing their centroid change, leading to a more difficult read for the offense and ultimately a sack (0.0036 yards of centroid change, -3.24 EPA). However, not all plays are created equal. Different types of motion in different situations lead to various outcomes (different types of motion, down, distance, alignments etc.), and thus it is important that we set a baseline expectation of how much the centroid should change on a certain play. 
+
+![](../images/ModelingPlot.png)
 
 ## Modeling 
 
-The goal of modeling was to represent the complex relationship between presnap motion and other in-game context, and its effect on defensive positioning. To model this, we used an XGBoost model to identify the expected centroid change on a given play. Our data includes all plays that include motion since the line set. We trained our model on weeks 1 through 6 and tested our model on weeks 7 through 9. We considered :
-- motion_type (Jet, Fly, Orbit, In, Out, No Motion)
+The goal of modeling was to represent the complex relationship between pre-snap motion and other in-game context, and its effect on defensive positioning. To model this, we used an XGBoost model to identify the **expected centroid change** on a given play. Our data includes all plays that include motion since the line set. We trained our model on weeks 1 through 6 and tested our model on weeks 7 through 9. We considered :
+- motion_type (Jet, Fly, Orbit, In, Out)
 - total_distance (derived distance traveled by motion man on his motion)
 - offenseFormation (provided PFF data)
 - receiverAlignment
@@ -65,37 +76,45 @@ The goal of modeling was to represent the complex relationship between presnap m
 - yardsToGo
 - pff_manZone
 
-Our model produces a 0.41 RMSE and a 0.30 MAE, which we found to be acceptable due to the nature of the centroid changes tracked (maybe include summary of centroid change variable). We found that total distance of offensive motion mattered the most in our model, which makes sense as the distance traveled by the motion man plays a role in the slight shifts made by the defense. Other features that were significant were yards to go, orbit motions, zone defenses, and jet motions. 
+Our model produces a 0.40 RMSE and a 0.31 MAE. Considering the mean value for centroid change of 0.77, we found these errors acceptable. We found that total distance of offensive motion mattered the most in our model, which makes sense as the distance traveled by the motion man plays a role in the slight shifts made by the defense. Other features that were significant were yards to go, orbit motions, zone defenses, and jet motions. 
+
+![Motion success rates by type](../images/MotionAnalysisTesting.png)
+
+
+![](../images/Top10CCOE.png)
+
+
+After determining expectation for how much the centroid should change on a play using the model, we examined the residuals from our test data to see their impact on play result and study team trends. We defined this measure of residual as **centroid change over expected** or **CCOE**.
+
+$$
+CCOE = actual\ centroid\ change - expected\ centroid\ change
+$$
+
+If we look conditionally at our results, we find situations where certain motions are more beneficial than others.
+
+![](../images/EarlyDownFlyMan.png)
+
+![](../images/OutLongBalance.png)
+
+One example of CCOE translating is in early down standard dropback (No RPO or play action) situations, where the defense is in man coverage. Our analysis indicates
+that in this situation, offenses that are able to generate more CCOE in the defense (more defensive alignment movement) have a positive trend with generating more EPA. This makes sense as standard shotgun dropbacks tend to have lower EPA and success rate, so the addition of fly motions adds a new, impactful layer to a normally ordinary plan on offense. Another example is using out motion in balanced 2x2 receiver alignments. In longer yards-to-go situations, our analysis indicates that spreading out the formation via out motions forces the defense to realign and adjust to prevent any explosive plays in these situations, where offenses have been able to take advantage for a higher EPA/play. 
+
+
+## Applications 
+
+Our motion analysis could be of use to defensive coaches when game-planning for opponents. Below we have included sample motion reports that help gain insight into how teams use motion, and where opposing offenses create the most leverage situationally, by forcing defenses into higher CCOE (Centroid Change Over Expected) 
+
+![Analysis of Vikings offense](../images/VikingsMotionReport.png)
+
+## Conclusion 
+
+Our work aims to create a metric that quantifies how much a defense re-aligns when faced with different motion types in various passing situations. CCOE can help offenses self-scout their motion effectiveness by breaking down successful vs unsuccessful plays within the context of coverage, down, distance and formation. Defensively, CCOE can be used by coaches to prepare for situations where opposing offenses may try to take advantage of the defense’s coverage and motion rules to create explosive plays. By having these insights, coaches are more prepared to adapt their defense on a week to week basis to adjust to the nuances of pre-snap motion.  
+
+## Future Improvements
+
+While our analysis helps paint a picture about the pre-snap offensive vs defensive battle to create leverage, it is not perfect as defenses’ likely take more into consideration when they adjust after the line is set beyond just the motion at hand -  helping to understand our model’s R^2 of 0.34. In the absence of annotated motion types, we chose to use conditional logic to create our motion classifier, but, more advanced techniques such as Bezier curves could be used to define different motion types that would help increase model accuracy. 
 
 
 
+Check out our project Github [HERE](https://github.com/jacksullivan27/bigdatabowl)
 
-# DISREGARD FROM HERE STILL IN PROGRESS
-
-
-
-
-
-
-## Defensive Positioning Metrics
-
-(Describe the metrics we use to measure defensive movement as a result of offensive motion. Utilize graphs and images to convey the idea of perimeter/center of mass/area)
-
-
-
-
-
-
-## Most impactful Motion schemes
-
-(Describe the motion types, formations for motion, ect. that are most impactful to defensive shifting)
-
-
-
-
-## Coach's Application
-
-(describe how our findings can be applied to game planning, play creation, in-game adjustments)
-
-
-##
