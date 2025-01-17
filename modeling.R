@@ -72,26 +72,25 @@ test_y <- test_data$centroid_change
 dtrain <- xgb.DMatrix(data = train_x, label = train_y)
 dtest <- xgb.DMatrix(data = test_x, label = test_y)
 
-# Set parameters for XGBoost
 params <- list(
-  objective = "reg:squarederror", # Default for regression tasks
-  booster = "gbtree", # Default booster
-  eta = 0.1,                     # Default learning rate                    # No minimum loss reduction required
-  max_depth = 6,                 # Default maximum depth of a tree
-  min_child_weight = 2,          # Default minimum sum of instance weight (hessian) needed in a child
-  subsample = 1,                 # Default: use all data without subsampling
-  colsample_bytree = 1,          # Default: use all features
-  lambda = 1,                    # Default L2 regularization term
-  alpha = 2                     # Default L1 regularization term
+  objective = "reg:squarederror", 
+  booster = "gbtree", 
+  eta = 0.1,                    
+  max_depth = 6,             
+  min_child_weight = 2,         
+  subsample = 1,                 
+  colsample_bytree = 1,          
+  lambda = 1,           
+  alpha = 2                   
 )
 
 xgb_model <- xgb.train(
   params = params,
   data = dtrain,
-  nrounds = 500,          # Increased max rounds since we reduced learning rate
+  nrounds = 500,         
   watchlist = list(train = dtrain, test = dtest),
-  early_stopping_rounds = 20,  # Stop if no improvement for 50 rounds
-  print_every_n = 50          # Reduce printing frequency
+  early_stopping_rounds = 20, 
+  print_every_n = 50       
 )
 
 
